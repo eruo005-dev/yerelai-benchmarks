@@ -1,0 +1,24 @@
+name: Verify submissions
+
+on:
+  pull_request:
+    paths:
+      - 'data/runs.jsonl'
+      - 'data/**.json'
+      - 'runs/**'
+  push:
+    branches: [main]
+    paths:
+      - 'data/**'
+      - 'scripts/verify-submission.py'
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Validate submissions
+        run: python scripts/verify-submission.py

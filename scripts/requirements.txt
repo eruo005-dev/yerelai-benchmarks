@@ -1,0 +1,10 @@
+lm-eval>=0.4.4
+transformers>=4.46
+accelerate>=1.0
+sentencepiece>=0.2
+protobuf>=4.25
+datasets>=3.0
+openai>=1.50
+requests>=2.32
+jsonschema>=4.23
+pytest>=8.0
