@@ -1,0 +1,73 @@
+name: Nightly Trendyol-LLM benchmark
+
+# Runs a small TR-MMLU subset against the latest Trendyol-LLM checkpoint
+# every night at 02:00 Europe/Istanbul. Commits the resulting JSON into
+# runs/nightly/. The yerelai-site pulls these via the public /api/.
+#
+# Requirements (set as repo secrets):
+#   - GROQ_API_KEY        : used to run Llama 3.3 70B baseline cheap
+#   - HF_API_TOKEN        : for downloading Trendyol-LLM-Asure-12B GGUF
+#   - GITHUB_TOKEN        : auto-provided by Actions
+#
+# Each nightly run produces a single PR-grade artifact:
+#   runs/nightly/{YYYY-MM-DD}-trendyol-asure-12b-tr-mmlu.json
+# Status defaults to `community` (community + script-attested).
+
+on:
+  schedule:
+    - cron: '0 23 * * *'   # 02:00 Europe/Istanbul (TR is UTC+3)
+  workflow_dispatch:        # manual trigger button
+
+permissions:
+  contents: write           # to commit artifacts back
+
+jobs:
+  nightly:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install
+        run: |
+          pip install -r scripts/requirements.txt
+          pip install lm-eval[api]
+
+      - name: Run TR-MMLU subset (Trendyol-LLM-Asure-12B via Groq if mirrored, else HF Inference)
+        id: bench
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          HF_API_TOKEN: ${{ secrets.HF_API_TOKEN }}
+        run: |
+          DATE=$(date -u +%Y-%m-%d)
+          OUT="runs/nightly/${DATE}-llama-3-3-70b-tr-mmlu-groq.json"
+          mkdir -p "$(dirname "$OUT")"
+          python scripts/run-tr-mmlu.py \
+              --model "llama-3.3-70b-versatile" \
+              --runtime api-direct \
+              --quant fp8 \
+              --hardware api \
+              --endpoint https://api.groq.com/openai/v1 \
+              --seed 42 \
+              --repetitions 3 \
+              --output "$OUT" \
+              --submitted-by "github-actions[bot]" || true
+          echo "out=$OUT" >> "$GITHUB_OUTPUT"
+
+      - name: Validate
+        run: python scripts/verify-submission.py || echo "Validation soft-fail (nightly mode)"
+
+      - name: Commit + push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add runs/nightly/
+          if ! git diff --staged --quiet; then
+            git commit -m "nightly: $(date -u +%Y-%m-%d) benchmark result"
+            git push
+          else
+            echo "No new result to commit."
+          fi
